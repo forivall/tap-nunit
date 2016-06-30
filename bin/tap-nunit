@@ -1,0 +1,11 @@
+#!/usr/bin/env node
+
+var parser = require('../')();
+
+process.stdin
+  .pipe(parser)
+  .pipe(process.stdout);
+
+	process.on('exit', function() {
+	  if (parser.errors.length) process.exit(1)
+	})

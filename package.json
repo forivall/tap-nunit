@@ -1,0 +1,35 @@
+{
+  "name": "tap-nunit",
+  "version": "1.0.0",
+  "description": "nUnit TAP output formatter",
+  "main": "index.js",
+  "bin": {
+    "tap-nunit": "bin/tap-nunit"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "test": "make test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/denodell/tap-nunit.git"
+  },
+  "keywords": [
+    "tap",
+    "nunit"
+  ],
+  "author": "Den Odell <denodell@me.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/denodell/tap-nunit/issues"
+  },
+  "homepage": "https://github.com/denodell/tap-nunit#readme",
+  "dependencies": {
+    "duplexer": "^0.1.1",
+    "tap-parser": "^1.2.2",
+    "through2": "^2.0.1"
+  },
+  "devDependencies": {
+    "tape": "^4.6.0"
+  }
+}
