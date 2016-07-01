@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<test-results>
+  <test-suite name="1 === 1">
+    <results tests="1" failures="0" errors="0">
+      <test-case name="#1 should be equal"/>
+    </results>
+  </test-suite>
+  <test-suite name="2 === 2">
+    <results tests="1" failures="0" errors="0">
+      <test-case name="#2 should be equal"/>
+    </results>
+  </test-suite>
+</test-results>

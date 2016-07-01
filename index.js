@@ -1,57 +1,210 @@
 var parser   = require('tap-parser');
 var through  = require('through2');
 var duplexer = require('duplexer');
+var xmlbuilder = require('xmlbuilder');
+var extend = require('xtend');
+var formatDate = require('format-date')
 
-module.exports = function() {
-  var tap = parser();
-  var out = through.obj();
-  var stream = duplexer(tap, out);
+var defaults = {
+	// Whether the TAP comments should not be used as test-suite names
+	dontUseCommentsAsTestNames: false,
 
-  var data = [];
-	var errors = [];
-	var current = null;
-  var name = null;
-	var outputStart = `
-		<?xml version="1.0"?>
-		<test-results name="Karma Results" date="2016-06-30" time="13:34:09" invalid="0" ignored="0" inconclusive="0" not-run="0" errors="0" total="438" failures="0" skipped="1">
-		  <environment nunit-version="na" clr-version="na" os-version="15.5.0" platform="darwin" cwd="/Users/luke.channings/Projects/Volvo/vcc-stream2-vbs/src/Volvo.Vbs.Frontend/build" user="na" user-domain="na" machine-name="LON04042"/>
-		  <culture-info current-culture="na" current-uiculture="na"/>
-		  <test-suite name="PhantomJS 1.9.8 (Mac OS X 0.0.0)" type="TestFixture" executed="false" result="Success">
-		    <results>
-	`;
-	var outputEnd = `
-				</results>
-			</test-suite>
-	</test-results>`
+	// Whether . in test-suite names should be replaced with Unicode dot
+	// NOTE: this feature exist because many xUnit reporters assume . in
+	// test-suite name implies package hierarchy, which may not be the case.
+	replaceWithUnicodeDot: false,
 
-	tap.on('comment', function(res) {
-    current = '\n' + '  ' + res
-  })
+	// If specified, all test-suites will be prefixed with the given
+	// package name.
+	// NOTE: replaceWithUnicodeDot does not apply to package and . can be
+	// used to specify package hierarchy.
+	package: '',
 
-	tap.on('assert', function(res) {
-    var assert = current + ' ' + res.name
-    if (!res.ok) errors.push(assert)
-  })
+	// Whether tap parser should be in strict mode or not, false by default.
+	strict: false,
+};
 
-	tap.on('extra', function(res) {
-    if (res !== '') errors.push(res)
-  })
+module.exports = function(options) {
+  var outStream = through();
+	var tapParser = parser();
 
-	tap.on('results', function(res) {
-    var count = res.asserts.length
-    out.push('\n')
+	options = extend(defaults, options);
 
-    if (errors.length) {
-      errors.forEach(function(error) {
-        out.push(error)
-      })
-    } else {
-      out.push('no errors')
+	tapParser.strict = options.strict;
+
+	var noMoreTests = false;
+	var totalNumTests = 0;
+	var totalNumFailed = 0;
+	var totalNumSkipped = 0;
+  var curNumTests = 0;
+  var curNumFailed = 0;
+  var curNumSkipped = 0;
+  var exitCode = 0;
+	var rootXml = xmlbuilder.create('test-results');
+
+	rootXml.att('name', 'Test Results')
+	rootXml.att('date', formatDate('{year}-{month}-{day}', new Date()))
+	rootXml.att('time', formatDate('{hours}:{minutes}:{seconds}', new Date()))
+
+	rootXml.ele('environment').att('nunit-version', 'na').att('clr-version', 'na').att('os-version', '1.0.0').att('platform', 'node').att('cwd', '/build').att('user', 'na').att('user-domain', 'na').att('machine-name', 'local')
+	rootXml.ele('culture-info').att('current-culture', 'na').att('current-uiculture', 'na')
+
+	var testSuiteXml = rootXml.ele('test-suite')
+	testSuiteXml.att('name', 'TAP nUnit')
+	testSuiteXml.att('type', 'Test Fixture')
+	testSuiteXml.att('executed', false)
+
+	var curTestXml = testSuiteXml.ele('results')
+
+	tapParser.on('comment', function(comment) {
+    // comment specifies boundaries between testsuites, unless feature disabled.
+    if (options.dontUseCommentsAsTestNames) {
+      return;
+    }
+    if (noMoreTests) {
+      return;
+    }
+    // close the current test, if any.
+    closeCurTest();
+    // create new test
+    newTest(comment);
+  });
+
+  tapParser.on('assert', function(assert) {
+    // no test name was given, so all asserts go in a single test
+    if (!curTestXml) {
+      newTest('Default');
     }
 
-    out.push('\n')
-  })
+    var testCaseXml = curTestXml.ele('test-case', {
+      name: '#' + assert.id + ' ' + assert.name,
+			description: 'TAP nUnit : #' + assert.id + ' ' + assert.name,
+			time: '0.01'
+    });
 
-	stream.errors = errors
-  return stream;
+    curNumTests++;
+		totalNumTests++;
+    if (assert.skip) {
+      curNumSkipped++;
+			totalNumSkipped++;
+      testCaseXml.ele('skipped');
+    } else {
+      if (!assert.ok) {
+        curNumFailed++;
+				totalNumFailed++;
+        exitCode = 1;
+        /*var failureXml = testCaseXml.ele('failure');
+        if(assert.diag) {
+          failureXml.txt(formatFailure(assert.diag));
+        }*/
+      }
+    }
+
+		testCaseXml = testCaseXml.att('executed', 'True')
+		testCaseXml = testCaseXml.att('success', assert.ok ? 'True' : 'False')
+		testCaseXml = testCaseXml.att('result', assert.ok ? 'Success' : 'Failure')
+  });
+
+  tapParser.on('plan', function(p) {
+    // we got to the end, ignore any tests after it
+    closeCurTest();
+    noMoreTests = true;
+  });
+
+  tapParser.on('complete', function(r) {
+    // output any parse errors
+    if (r.failures) {
+      r.failures.forEach(function(fail) {
+        if (fail.tapError) {
+          var err = new Error('TAP parse error: ' + fail.tapError);
+          outStream.emit('error', err);
+        }
+      });
+    }
+
+		rootXml.att('invalid', 0);
+		rootXml.att('ignored', 0);
+		rootXml.att('inconclusive', 0);
+		rootXml.att('not-run', 0);
+		rootXml.att('total', totalNumTests);
+		rootXml.att('failures', totalNumFailed);
+		if (curNumSkipped > 0) {
+			rootXml.att('skipped', totalNumSkipped);
+		}
+		rootXml.att('errors', totalNumFailed);
+
+		if (totalNumFailed > 0) {
+			testSuiteXml.att('result', 'Failure')
+		} else {
+			testSuiteXml.att('result', 'Success')
+		}
+
+    // prettify and output the xUnit xml.
+    var xmlString = rootXml.end({
+      pretty: true,
+      indent: '  ',
+      newline: '\n'
+    });
+    outStream.push(xmlString + '\n');
+    outStream.emit('end');
+    result.exitCode = exitCode;
+  });
+
+
+
+	var result = duplexer(tapParser, outStream);
+
+  return result;
+
+	function newTest(testName) {
+	  testName = formatTestName(testName);
+	  curNumTests = 0;
+	  curNumFailed = 0;
+	  curNumSkipped = 0;
+	}
+
+	function closeCurTest() {
+	  // close the previous test if there is one.
+
+		/*
+	  if (curTestXml) {
+	    curTestXml.att('tests', curNumTests);
+	    curTestXml.att('failures', curNumFailed);
+	    if (curNumSkipped > 0) {
+	      curTestXml.att('skipped', curNumSkipped);
+	    }
+	    curTestXml.att('errors', 0);
+	  }
+		*/
+	}
+
+	function formatTestName(testName) {
+	  if (options.replaceWithUnicodeDot) {
+	    var unicodeDot = '\uFF0E'; //full width unicode dot
+	    testName = testName.replace(/\./g, unicodeDot);
+	  }
+
+	  if (options.package) {
+	    testName = options.package + '.' + testName;
+	  }
+	  if(testName.indexOf('#') === 0) {
+	    testName = testName.substr(1);
+	  }
+	  return testName.trim();
+	}
+
+	function formatFailure(diag) {
+	  var text = '\n          ---\n';
+
+	  for(var key in diag) {
+	    if(diag.hasOwnProperty(key) && diag[key] !== undefined) {
+	      var value = diag[key];
+	      text += '            '+key+': ' + (typeof value === 'object' ? JSON.stringify(value) : value) + '\n';
+	    }
+	  }
+
+	  text += '          ...\n      ';
+
+	  return text;
+	}
 };
