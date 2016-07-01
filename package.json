@@ -1,6 +1,6 @@
 {
   "name": "tap-nunit",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "nUnit TAP output formatter",
   "main": "index.js",
   "bin": {
