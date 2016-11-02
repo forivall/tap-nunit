@@ -36,9 +36,11 @@ module.exports = function(options) {
 	var totalNumTests = 0;
 	var totalNumFailed = 0;
 	var totalNumSkipped = 0;
+	var totalNumInconclusive = 0;
   var curNumTests = 0;
   var curNumFailed = 0;
   var curNumSkipped = 0;
+	var curNumInconclusive = 0;
   var exitCode = 0;
 	var rootXml = xmlbuilder.create('test-results');
 
@@ -82,14 +84,20 @@ module.exports = function(options) {
 			time: '0.01'
     });
 
+		var result = 'Success';
     curNumTests++;
 		totalNumTests++;
     if (assert.skip) {
       curNumSkipped++;
 			totalNumSkipped++;
-      testCaseXml.ele('skipped');
+			result = 'Skipped';
+		} else if (assert.todo) {
+			curNumInconclusive++;
+			totalNumInconclusive++;
+			result = 'Inconclusive';
     } else {
       if (!assert.ok) {
+				result = 'Failure'
         curNumFailed++;
 				totalNumFailed++;
         exitCode = 1;
@@ -102,7 +110,7 @@ module.exports = function(options) {
 
 		testCaseXml = testCaseXml.att('executed', 'True')
 		testCaseXml = testCaseXml.att('success', assert.ok ? 'True' : 'False')
-		testCaseXml = testCaseXml.att('result', assert.ok ? 'Success' : 'Failure')
+		testCaseXml = testCaseXml.att('result', result)
   });
 
   tapParser.on('plan', function(p) {
@@ -124,7 +132,7 @@ module.exports = function(options) {
 
 		rootXml.att('invalid', 0);
 		rootXml.att('ignored', 0);
-		rootXml.att('inconclusive', 0);
+		rootXml.att('inconclusive', totalNumInconclusive);
 		rootXml.att('not-run', 0);
 		rootXml.att('total', totalNumTests);
 		rootXml.att('failures', totalNumFailed);

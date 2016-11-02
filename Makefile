@@ -1,4 +1,4 @@
-.PHONY: pass fail test
+.PHONY: pass fail skip todo test
 
 TAP  = ./node_modules/tape/bin/tape
 NUNIT = ./bin/tap-nunit
@@ -9,4 +9,10 @@ pass:
 fail:
 	@$(TAP) test/fail.js | $(NUNIT)
 
-test: pass fail
+skip:
+	@$(TAP) test/skip.js | $(NUNIT)
+
+todo:
+	@$(TAP) test/todo.js | $(NUNIT)
+
+test: pass fail skip todo
