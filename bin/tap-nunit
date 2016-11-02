@@ -4,11 +4,11 @@ require('epipebomb')();
 var parser = require('../')();
 
 process.stdin
-  .pipe(parser)
-  .pipe(process.stdout);
+	.pipe(parser)
+	.pipe(process.stdout);
 
-  process.on('exit', function (code) {
-    if (code === 0 && parser.exitCode !== 0) {
-        process.exit(parser.exitCode);
-    }
-  });
+	process.on('exit', function (code) {
+		if (code === 0 && parser.exitCode !== 0) {
+				process.exit(parser.exitCode);
+		}
+	});
